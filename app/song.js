@@ -8,8 +8,11 @@ class Song {
     this.previewUrl = previewUrl;
   }
 
-  isSong(trackID) {
-    return trackID == this.trackID;
+  isSong(song) {
+    if (song.trackID == this.trackID || (song.name === this.name && song.artist === this.artist)) {
+      return true;
+    }
+    return false;
   }
 
     async getBase64FromURL() {

@@ -161,11 +161,11 @@ io.on("connection", (socket) => {
     // });
   });
 
-  socket.on("submit_guess", ({ trackID }) => {
+  socket.on("submit_guess", ({ song }) => {
     const player = players[socket.sessionID];
     const roomCode = player.roomCode;
     const room = rooms[roomCode];
-    room.submitPlayerGuess(player, trackID, socket);
+    room.submitPlayerGuess(player, song, socket);
   });
 
   socket.on("curse_player", ({ opSessionID, selectedCurseIndex }) => {

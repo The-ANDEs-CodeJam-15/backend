@@ -7,25 +7,23 @@ class Curse {
         this.effectFunction = effectFunction;
         this.icon = icon;
     }*/
-   static curseTypes = ["slowDown", "speedUp", "lowPass", "highPass", "distort", "bitCrush", "reverb", "chop", "delay"];
+   static curseTypes = ["Slow Down", "Speed Up", "Low Pass Filter", "High Pass Filter", "Distortion", "Bitcrush", "Reverb", "Chop Up", "Echo"];
 
     constructor() {
-        this.name = Curse.curseTypes[Math.floor((Math.random() * 10))];
+        this.name = Curse.curseTypes[Math.floor(Math.random() * Curse.curseTypes.length)];
     }
-
     /*
     Curse types:
-    - slowDown 
-    - speedUp 
-    - lowPass
-    - highPass
-    - distort
-    - bitCrush
-    - reverb
-    - chop
-    - delay
+    - Slow Down
+    - Speed Up 
+    - Low Pass
+    - High Pass
+    - Distortion
+    - Bitcrush
+    - Reverb
+    - Chop Up
+    - Delay
     */
-
 }
 
 export default Curse;

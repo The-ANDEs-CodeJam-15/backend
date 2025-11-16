@@ -4,7 +4,7 @@ import Playlist from "./playlist.js";
 import Song from "./song.js"
 import Curse from "./curse.js"
 
-const CURSE_DURATION = 5;
+const CURSE_DURATION = 10;
 const GUESS_DURATION = 15;
 const RESULT_DURATION = 5;
 const INITIAL_START_TIME = 3;
@@ -40,10 +40,10 @@ class Room {
   }
 
   getRandomHSLColor() {
-    const h = Math.floor(Math.random() * 360); // hue: 0-359
-    const s = 70; // saturation
-    const l = 60; // lightness
-    return `hsl(${h}, ${s}%, ${l}%)`;
+      const h = Math.floor(Math.random() * 360); // hue: 0-359
+      const s = 70; // saturation
+      const l = 60; // lightness
+      return `hsl(${h}, ${s}%, ${l}%)`;
   }
 
   getPlayersCondensed() {
@@ -64,7 +64,7 @@ class Room {
     console.log("starting game")
     this.closed = true;
     // Load the songs - for now we will hardcode the playlist - use id 5339620562
-    const playlistID = 5339620562;
+    const playlistID = 13650203641;
     const playlist = new Playlist(playlistID);
     await playlist.fetchTracks();
     this.songs = playlist.getRandomSongs(this.totalRounds);
@@ -92,9 +92,8 @@ class Room {
     this.isRoundActive = false;
 
     // Calculate final scores, etc.
-    this.io.to(this.roomCode).emit("game_ended", {
-      // Send final results
-      totalRounds: this.totalRounds
+    this.io.to(this.roomCode).emit("end_game", {
+        players: this.getPlayersCondensed()
     });
   }
 
@@ -139,7 +138,7 @@ class Room {
     });
     */
     // Initial countdown
-    this.io.to(this.roomCode).emit("initial_countdown", { players: this.getPlayersCondensed() });
+    this.io.to(this.roomCode).emit("initial_countdown", { players: this.getPlayersCondensed(), totalRounds: this.totalRounds });
     await this.countdownToNext(INITIAL_START_TIME);
 
     while (this.currentRound <= this.totalRounds) {
@@ -165,6 +164,7 @@ class Room {
     const currentSongAudio = await this.currentSong.getBase64FromURL();
     console.log("Audio converted, length:", currentSongAudio?.length);
 
+    this.io.to(this.roomCode).emit("update_round", { currentRound: this.currentRound})
     for (let i = 0; i < this.players.length; i++) {
       console.log(`Sending audio to ${this.players[i].userName}`);
       console.log("PLAYER SOCKET ID:", this.players[i].socketID);
@@ -229,8 +229,9 @@ class Room {
     });
   }
 
-  submitPlayerGuess(player, trackID, socket) {
-    const points = this.currentSong.isSong(trackID) ? this.getTimeRemaining() : 0
+  submitPlayerGuess(player, song, socket) {
+    console.log("!!!TRACK ID OF PLAYER GUESS!!!", song.trackID);
+    const points = this.currentSong.isSong(song) ? this.getTimeRemaining() : 0
     let newCurses = 0;
     console.log("Should get", points, "points")
     if (points > 0) {
