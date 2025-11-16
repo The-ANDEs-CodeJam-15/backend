@@ -14,7 +14,7 @@ class Playlist {
       if (!data.tracks || !data.tracks.data) return;
 
       this.songs = data.tracks.data.map(
-        t => new Song(t.id, t.title, t.artist.name, t.album.cover, t.preview)
+        t => new Song(t.id, t.title, t.artist.name, t.album.cover_big, t.preview)
       );
     } catch (err) {
       console.error("Failed to fetch playlist", err);

@@ -3,6 +3,7 @@ import http from "http";
 import crypto from "crypto";
 import Player from "./player.js";
 import Room from "./room.js"
+import Song from "./song.js"
 
 const server = http.createServer();
 const io = new Server(server, {
@@ -14,7 +15,7 @@ const sessionStore = {};
 const players = {};
 const rooms = {};
 
-const onEventName = () => { };
+//const onEventName = () => { };
 
 io.on("connection", (socket) => {
   const incomingSessionID = socket.handshake.auth.sessionID;
@@ -135,7 +136,21 @@ io.on("connection", (socket) => {
     room.startGame();
   });
 
-  socket.on("guess_input", ({ guess }) => {
+  socket.on("get_dropdown_options", async ({ entry }) => {
+    try {
+      const res = await fetch(`https://api.deezer.com/search?q=${entry}&limit=5`);
+      const data = await res.json();
+      //parse song data to usable/consistent format
+      const parsed_data = data.data.map(
+        t => new Song(t.id, t.title, t.artist.name, null, null)
+      )
+
+     //console.log("Parsed Data for Dropdown", parsed_data)
+
+      socket.emit("activate_dropdown", { dropDownData: parsed_data })
+    } catch (err) {
+      console.error("Failed to fetch query results", err);
+    }
     // // Search your song database for matches
     // const matches = songs.filter(song =>
     //   song.name.toLowerCase().includes(guess.toLowerCase())

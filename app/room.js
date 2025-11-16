@@ -4,8 +4,10 @@ import Playlist from "./playlist.js";
 import Song from "./song.js"
 import Curse from "./curse.js"
 
-const DEFAULT_DURATION = 10;
-const INITIAL_START_TIME = 5;
+const CURSE_DURATION = 5;
+const GUESS_DURATION = 15;
+const RESULT_DURATION = 5;
+const INITIAL_START_TIME = 3;
 
 class Room {
   constructor(roomCode, hostPlayer, io) {
@@ -48,10 +50,10 @@ class Room {
     const mylist = [];
     for (let i = 0; i < this.players.length; i++) {
       mylist.push({
-        username: this.players[i].userName,
+        userName: this.players[i].userName,
         sessionID: this.players[i].sessionID,
         points: this.players[i].points,
-        color: this.getRandomHSLColor,
+        color: this.getRandomHSLColor(),
       })
     }
 
@@ -164,7 +166,6 @@ class Room {
     console.log("Audio converted, length:", currentSongAudio?.length);
 
     for (let i = 0; i < this.players.length; i++) {
-      this.players[i].awardRandomCurse()
       console.log(`Sending audio to ${this.players[i].userName}`);
       console.log("PLAYER SOCKET ID:", this.players[i].socketID);
       this.io.to(this.players[i].socketID).emit("cursing_started", {
@@ -173,7 +174,7 @@ class Room {
       })
     }
 
-    await this.countdownToNext(DEFAULT_DURATION)
+    await this.countdownToNext(CURSE_DURATION)
   }
 
   async startGuessingSequence() {
@@ -190,24 +191,24 @@ class Room {
     // Main guessing logic
     // {here}
 
-    await this.countdownToNext(DEFAULT_DURATION)
+    await this.countdownToNext(GUESS_DURATION)
   }
 
   async startResultsSequence() {
     // THIRD AND FINAL SEQUENCE OF A ROUND
     console.log("starting results sequence")
-    this.io.to(this.roomCode).emit("results_started");
+    const currentSongCondensed = { trackID: this.currentSong.trackID, name: this.currentSong.name, artist: this.currentSong.artist, cover: this.currentSong.cover };
+    this.io.to(this.roomCode).emit("results_started", { song : currentSongCondensed, players: this.getPlayersCondensed() });
 
     // Main results logic
     // {here} 
 
-    await this.countdownToNext(DEFAULT_DURATION);
+    await this.countdownToNext(RESULT_DURATION);
   }
 
   countdownToNext(durationSeconds) {
-    // this method was created by a human (doubt)
     return new Promise((resolve) => {
-      this.sequenceEndTime = Date.now() + (durationSeconds * 1000);
+      this.sequenceEndTime = Date.now() + ((durationSeconds + 1) * 1000);
 
       this.timerInterval = setInterval(() => {
         const timeRemaining = this.getTimeRemaining();
@@ -230,13 +231,15 @@ class Room {
 
   submitPlayerGuess(player, trackID, socket) {
     const points = this.currentSong.isSong(trackID) ? this.getTimeRemaining() : 0
+    let newCurses = 0;
+    console.log("Should get", points, "points")
     if (points > 0) {
       if (!this.firstGuessed) {
         this.firstGuessed = true;
-        player.awardRandomCurse();
+        newCurses = player.awardRandomCurse();
       }
 
-      socket.emit("correct_guess", { points: points }); //this isn't necessary here
+      socket.emit("correct_guess", { newCurses: newCurses }); //this isn't necessary here
       player.awardPoints(points);
       player.setAwarded(true);
       let allAwarded = true;

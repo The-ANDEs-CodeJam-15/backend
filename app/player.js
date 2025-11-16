@@ -23,6 +23,7 @@ class Player {
 
     awardPoints(points) {
         this.points += points;
+        console.log("Now has", this.points, "points")
     }
 
     hasBeenAwarded() {
@@ -39,6 +40,11 @@ class Player {
 
     awardRandomCurse() {
         this.curseInventory.push(new Curse())
+        if (this.activeCurses.length > 0) {
+           this.curseInventory.push(new Curse())
+           return 2
+        }
+        return 1
     }
 
     getCursesCondensed() {
@@ -56,6 +62,7 @@ class Player {
         targetPlayer.activeCurses.push(curseToApply);
         this.curseInventory.splice(indexOfCurse, 1);
         io.to(targetPlayer.socketID).emit("apply_curse", { curseToApply: curseToApply.name });
+        io.to(this.socketID).emit("set_curse_inventory", { curses: this.getCursesCondensed() })
         //io.to(this.socketID).emit("use_curse")
     }
 }
