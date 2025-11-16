@@ -22,10 +22,18 @@ class Playlist {
   }
 
   getRandomSongs(count) {
-    if (!this.songs.length || this.songs.length < count) return [];
-    const shuffled = this.songs.sort(() => 0.5 - Math.random());
+    // Filter out songs without preview URLs
+    const songsWithPreviews = this.songs.filter(song => song.previewUrl && song.previewUrl !== null && song.previewUrl !== "");
+    
+    if (!songsWithPreviews.length || songsWithPreviews.length < count) {
+      console.warn(`Not enough songs with previews. Requested: ${count}, Available: ${songsWithPreviews.length}`);
+      return songsWithPreviews; // Return what we have
+    }
+    
+    const shuffled = [...songsWithPreviews].sort(() => 0.5 - Math.random());
     return shuffled.slice(0, count);
   }
+
 }
 
 export default Playlist;

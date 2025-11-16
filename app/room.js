@@ -1,6 +1,8 @@
 import { time } from "console";
 import Player from "./player.js";
 import Playlist from "./playlist.js";
+import Song from "./song.js"
+import Curse from "./curse.js"
 
 const DEFAULT_DURATION = 10;
 const INITIAL_START_TIME = 5;
@@ -17,24 +19,48 @@ class Room {
     this.currentRound = 1;
     this.sequence = 0;
     this.running = false;
+    this.closed = false;
+    this.firstGuessed = false;
   }
 
-  
+
 
   // 1. Overall game management
 
 
 
   addPlayer(player) {
-    if (this.players.find(p => p.sessionID === player.sessionID)) {
+    if (this.players.find(p => p.sessionID === player.sessionID) || this.closed) {
       return false;
     }
     this.players.push(player);
     return true;
   }
 
+  getRandomHSLColor() {
+    const h = Math.floor(Math.random() * 360); // hue: 0-359
+    const s = 70; // saturation
+    const l = 60; // lightness
+    return `hsl(${h}, ${s}%, ${l}%)`;
+  }
+
+  getPlayersCondensed() {
+    const mylist = [];
+    for (let i = 0; i < this.players.length; i++) {
+      mylist.push({
+        username: this.players[i].userName,
+        sessionID: this.players[i].sessionID,
+        points: this.players[i].points,
+        color: this.getRandomHSLColor,
+      })
+    }
+
+    return mylist;
+  }
+
   async startGame() {
     console.log("starting game")
+    this.closed = true;
     // Load the songs - for now we will hardcode the playlist - use id 5339620562
     const playlistID = 5339620562;
     const playlist = new Playlist(playlistID);
@@ -43,24 +69,26 @@ class Room {
     console.log("songs:")
     console.log(this.songs)
 
+    //temporary: check preview URLs
+    const previewUrls = this.songs.map(song => song.previewUrl);
+    console.log("Preview URLs:");
+    console.log(previewUrls);
+
     // Ensure points start at 0; important when restarting after a previous round
-    
-    for (let i=0; i < this.players.length; i++) {
+
+    for (let i = 0; i < this.players.length; i++) {
       this.players[i].resetPoints();
     }
 
     // Will set up initial page structure; first transition from default loading page
     console.log("trying to start game: emitting 'game_starting' to clients")
     this.io.to(this.roomCode).emit("game_starting", {});
-
-    // Round starts set to 1; will be updated during curse sequences
-    this.updateSong()
   }
 
   endGame() {
     //this.stopTimer();
     this.isRoundActive = false;
-    
+
     // Calculate final scores, etc.
     this.io.to(this.roomCode).emit("game_ended", {
       // Send final results
@@ -78,55 +106,72 @@ class Room {
     let allReady = true
     for (let i = 0; i < this.players.length; i++) {
       allReady = allReady && this.players[i].isReady
+      if (!allReady) break;
     }
-    //console.log("Overall ready status at this time: ", allReady)
 
     if (allReady && !this.running) {
-        console.log("all ready!")
-        for (let i = 0; i < this.players.length; i++) {
-            player.setReady(false);
-        }
-        console.log("initial countdown")
-        this.io.to(this.roomCode).emit("initial_countdown", ({ }));
-        console.log("starting gameloop")
-        this.gameLoop();
-        this.running = true;
+      for (let i = 0; i < this.players.length; i++) {
+        this.players[i].setReady(false);
+      }
+      this.gameLoop();
+      this.running = true;
     }
   }
-
 
 
   // 2. Round management (rounds divided into timed "sequences")
 
+
   async gameLoop() {
+    // Initial song load
+    this.updateSong();
+    /*  
+    this.io.to(this.roomCode).emit("load_song", {
+    song: {
+      trackID: this.currentSong.trackID,
+      previewUrl: this.currentSong.previewUrl,
+      name: this.currentSong.name,
+      artist: this.currentSong.artist,
+      cover: this.currentSong.cover
+    }
+    });
+    */
+    // Initial countdown
+    this.io.to(this.roomCode).emit("initial_countdown", { players: this.getPlayersCondensed() });
     await this.countdownToNext(INITIAL_START_TIME);
+
     while (this.currentRound <= this.totalRounds) {
       console.log("\nROUND STARTING\n", this.currentRound);
-      if (this.currentRound > 1) {
-        await this.startCurseSequence();
-      }
+
+      await this.startCurseSequence();
       await this.startGuessingSequence();
       await this.startResultsSequence();
+
+      //prep for next round
       this.currentRound++;
+      this.updateSong();
     }
+    //end game, looping is done
+    this.endGame();
   }
 
   async startCurseSequence() {
     console.log("starting curse sequence")
-    // FIRST SEQUENCE OF A ROUND (aside from first round)
+    console.log("CURRENT SONG:", this.currentSong);
 
-    // if all rounds done break
+    // No parameter needed - it uses this.previewUrl
+    const currentSongAudio = await this.currentSong.getBase64FromURL();
+    console.log("Audio converted, length:", currentSongAudio?.length);
 
-    this.currentRound++;
-    
-    if (this.currentRound > this.totalRounds) {
-      this.endGame();
-      return;
+    for (let i = 0; i < this.players.length; i++) {
+      this.players[i].awardRandomCurse()
+      console.log(`Sending audio to ${this.players[i].userName}`);
+      console.log("PLAYER SOCKET ID:", this.players[i].socketID);
+      this.io.to(this.players[i].socketID).emit("cursing_started", {
+        currentSongAudio: currentSongAudio,
+        curses: this.players[i].getCursesCondensed()
+      })
     }
-
-    this.updateSong()
-
--   this.io.to(this.roomCode).emit("cursing_started"); 
 
     await this.countdownToNext(DEFAULT_DURATION)
   }
@@ -134,74 +179,76 @@ class Room {
   async startGuessingSequence() {
     // SECOND SEQUENCE OF A ROUND (first sequence for first round)
     console.log("starting guessing sequence")
+    this.io.to(this.roomCode).emit("guessing_started");
 
+    this.firstGuessed = false;
     for (let i = 0; i < this.players.length; i++) {
-        const player = this.players[i];
-        player.setAwarded(false);
+      const player = this.players[i];
+      player.setAwarded(false);
     }
-    
--   this.io.to(this.roomCode).emit("guessing_started");
+
+    // Main guessing logic
+    // {here}
 
     await this.countdownToNext(DEFAULT_DURATION)
   }
-  
+
   async startResultsSequence() {
     // THIRD AND FINAL SEQUENCE OF A ROUND
     console.log("starting results sequence")
+    this.io.to(this.roomCode).emit("results_started");
 
+    // Main results logic
+    // {here} 
 
--   this.io.to(this.roomCode).emit("results_started");
-
-    await this.countdownToNext(DEFAULT_DURATION)
+    await this.countdownToNext(DEFAULT_DURATION);
   }
 
   countdownToNext(durationSeconds) {
-    // this.roundEndTime = Date.now() + (durationSeconds * 1000);
-
-    // // Start broadcasting timer updates
-    // this.timerInterval = setInterval(() => {
-    //   const timeRemaining = this.getTimeRemaining();
-    //   console.log("time remaining:", timeRemaining)
-      
-    //   this.io.to(this.roomCode).emit("timer_update", {
-    //     timeRemaining: timeRemaining,
-    //     totalTime: durationSeconds,
-    //   });
-
-    //   if (timeRemaining <= 0) {
-    //     clearInterval(this.timerInterval);
-    //     next();
-    //   }
-    // }, 1000);
+    // this method was created by a human (doubt)
     return new Promise((resolve) => {
-    this.roundEndTime = Date.now() + (durationSeconds * 1000);
-    
-    this.timerInterval = setInterval(() => {
-      const timeRemaining = this.getTimeRemaining();
-      console.log("time remaining:", timeRemaining);
-      
-      this.io.to(this.roomCode).emit("timer_update", {
-        timeRemaining: timeRemaining,
-        totalTime: durationSeconds,
-      });
-      
-      if (timeRemaining <= 0) {
-        console.log("Stopping interval!!")
-        clearInterval(this.timerInterval);
-        this.timerInterval = null;
-        resolve(); // ✅ Resolves when timer finishes
-      }
-    }, 1000);
-  });
+      this.sequenceEndTime = Date.now() + (durationSeconds * 1000);
+
+      this.timerInterval = setInterval(() => {
+        const timeRemaining = this.getTimeRemaining();
+        console.log("time remaining:", timeRemaining);
+
+        this.io.to(this.roomCode).emit("timer_update", {
+          timeRemaining: timeRemaining,
+          totalTime: durationSeconds,
+        });
+
+        if (timeRemaining <= 0) {
+          console.log("Stopping interval!!")
+          clearInterval(this.timerInterval);
+          this.timerInterval = null;
+          resolve(); // ✅ Resolves when timer finishes <-- sus green check mark
+        }
+      }, 1000);
+    });
   }
 
   submitPlayerGuess(player, trackID, socket) {
     const points = this.currentSong.isSong(trackID) ? this.getTimeRemaining() : 0
     if (points > 0) {
-      socket.emit("correct_guess", { points: correct });
+      if (!this.firstGuessed) {
+        this.firstGuessed = true;
+        player.awardRandomCurse();
+      }
+
+      socket.emit("correct_guess", { points: points }); //this isn't necessary here
       player.awardPoints(points);
       player.setAwarded(true);
-      //loop through all players, ending round if all awarded
+      let allAwarded = true;
+
+      for (let i = 0; i < this.players.length; i++) {
+        allAwarded = allAwarded && this.players[i].hasBeenAwarded();
+        if (!allAwarded) break;
+      }
+
+      if (allAwarded) {
+        this.sequenceEndTime = Date.now();
+      }
 
     } else {
       socket.emit("incorrect_guess");
@@ -209,8 +256,8 @@ class Room {
   }
 
   getTimeRemaining() {
-    if (!this.roundEndTime) return 0;
-    const remaining = Math.max(0, this.roundEndTime - Date.now());
+    if (!this.sequenceEndTime) return 0;
+    const remaining = Math.max(0, this.sequenceEndTime - Date.now());
     return Math.ceil(remaining / 1000);
   }
 

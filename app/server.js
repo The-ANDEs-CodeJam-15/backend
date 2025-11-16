@@ -11,7 +11,6 @@ const io = new Server(server, {
 
 // in-memory session store (lasts until server restarts)
 const sessionStore = {};
-const user_rooms_mapping = {};
 const players = {};
 const rooms = {};
 
@@ -20,9 +19,12 @@ const onEventName = () => { };
 io.on("connection", (socket) => {
   const incomingSessionID = socket.handshake.auth.sessionID;
 
+
   // restore existing session
   if (incomingSessionID && sessionStore[incomingSessionID]) {
     socket.sessionID = incomingSessionID;
+    player = players[socket.sessionID];
+    player.updateSocketID(socket.id);
     console.log("restored session", socket.sessionID);
   } else {
     // create new session
@@ -30,7 +32,7 @@ io.on("connection", (socket) => {
     sessionStore[socket.sessionID] = {};
 
     // create new player object and add to players store
-    const new_player = new Player(socket.sessionID);
+    const new_player = new Player(socket.sessionID, socket.id);
     players[socket.sessionID] = new_player;
 
     console.log("new session", socket.sessionID);
@@ -66,34 +68,60 @@ io.on("connection", (socket) => {
 
   socket.on("join_room", ({ roomCode, userName }) => {
     /* COME BACK TO THIS: handle case where user tries to join a room that is in progress, and that their session ID does not belong to */
-    console.log("attempting to join room", roomCode);
-    if (rooms[roomCode]) {
-      console.log("user", userName, "is joining room", roomCode);
-      socket.join(roomCode);
 
-      // get player object of host from players store
-      const player = players[socket.sessionID];
+    if (userName === "") {
+      console.log("Join request with empty user name rejected")
+      socket.emit("join error", { "Need to specify a user name!": string })
+      return;
+    }
 
-      player.roomCode = roomCode;
-      player.userName = userName; // set userName
+    console.log("User named", userName, "is attempting to join room", roomCode);
+    const room = rooms[roomCode]
+    const player = players[socket.sessionID];
 
-      rooms[roomCode].addPlayer(player);
+    if (room) {
+      console.log("User", userName, "is trying to join room", roomCode);
 
-      console.log("current players in room:", rooms[roomCode].players.map(p => p.userName));
-      
-      socket.emit("room_joined", { roomCode: roomCode });
+      // Determine if the user name is taken
+      /*
+      const nameTaken = false;
+      for (let i = 0; i < room.players.length; i++) {
+        if (userName === players[i].userName) {
+          nameTaken = true;
+          break;
+        }
+      }
+
+      if (nameTaken) {
+        socket.emit("join_error", { "User name taken!": string });
+        console.log("Request to join rejected; name is taken")
+      } else {*/
+        // Try to add to room!
+        const success = room.addPlayer(player);
+        if (success) {
+          // Finalize player's multiplayer details
+          player.roomCode = roomCode;
+          player.userName = userName;
+          socket.join(roomCode);
+          socket.emit("room_joined", { roomCode: roomCode });
+        } else {
+          console.log("Request to join rejected; game already started")
+          socket.emit("join_error", { "Game has already started!": string })
+        }
+      //}
     }
     else {
-      console.log("room join error: room does not exist");
-      socket.emit("join_error", {});
+      console.log("Request to join rejected; room does not exist");
+      socket.emit("join_error", { "Room does not exist!": string });
     }
+    console.log("current players in room:", rooms[roomCode].players.map(p => p.userName));
   });
 
   socket.on("request_start_game", () => {
     const player = players[socket.sessionID];
     const roomCode = player.roomCode;
     const room = rooms[roomCode];
-  
+
     if (!room) {
       socket.emit("error", { message: "Room not found" });
       return;
@@ -107,11 +135,28 @@ io.on("connection", (socket) => {
     room.startGame();
   });
 
+  socket.on("guess_input", ({ guess }) => {
+    // // Search your song database for matches
+    // const matches = songs.filter(song =>
+    //   song.name.toLowerCase().includes(guess.toLowerCase())
+    // ).slice(0, 10); // Return max 10 suggestions
+
+    // socket.emit("autocomplete_suggestions", {
+    //   suggestions: matches.map(s => s.name)
+    // });
+  });
+
   socket.on("submit_guess", ({ trackID }) => {
     const player = players[socket.sessionID];
     const roomCode = player.roomCode;
     const room = rooms[roomCode];
     room.submitPlayerGuess(player, trackID, socket);
+  });
+
+  socket.on("curse_player", ({ opSessionID, selectedCurseIndex }) => {
+    const player = players[socket.sessionID];
+    const opPlayer = players[opSessionID];
+    player.cursePlayer(opPlayer, selectedCurseIndex, io)
   });
 
   socket.on("ready_status", () => {
@@ -121,6 +166,7 @@ io.on("connection", (socket) => {
     const room = rooms[roomCode];
     room.setPlayerReady(player);
   })
+
 });
 
 server.listen(3001, () => {

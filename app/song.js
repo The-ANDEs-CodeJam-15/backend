@@ -11,6 +11,17 @@ class Song {
   isSong(trackID) {
     return trackID == this.trackID;
   }
+
+    async getBase64FromURL() {
+      console.log("PREVIEW URL IN BASE64FROMURL FUN:", this.previewUrl)
+      const response = await fetch(this.previewUrl);
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      const base64Audio = buffer.toString('base64');
+      
+      return `data:audio/mpeg;base64,${base64Audio}`;
+  }
 }
 
 export default Song;
