@@ -7,6 +7,10 @@ class Song {
     this.cover = cover;
     this.previewUrl = previewUrl;
   }
+
+  isSong(trackID) {
+    return trackID == this.trackID;
+  }
 }
 
 export default Song;

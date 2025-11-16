@@ -54,7 +54,7 @@ io.on("connection", (socket) => {
     hostPlayer.userName = userName; // set userName
 
     // create new room and add to rooms store
-    rooms[roomCode] = new Room(roomCode, hostPlayer)
+    rooms[roomCode] = new Room(roomCode, hostPlayer, io)
     console.log("new room created", roomCode);
     socket.emit("room_created", { roomCode: roomCode });
 
@@ -68,11 +68,11 @@ io.on("connection", (socket) => {
     /* COME BACK TO THIS: handle case where user tries to join a room that is in progress, and that their session ID does not belong to */
     console.log("attempting to join room", roomCode);
     if (rooms[roomCode]) {
-      console.log("joining room", roomCode);
+      console.log("user", userName, "is joining room", roomCode);
       socket.join(roomCode);
 
       // get player object of host from players store
-      const player = players[socket.sessionID]
+      const player = players[socket.sessionID];
 
       player.roomCode = roomCode;
       player.userName = userName; // set userName
@@ -81,7 +81,7 @@ io.on("connection", (socket) => {
 
       console.log("current players in room:", rooms[roomCode].players.map(p => p.userName));
       
-      socket.emit("room_joined", roomCode);
+      socket.emit("room_joined", { roomCode: roomCode });
     }
     else {
       console.log("room join error: room does not exist");
@@ -89,12 +89,38 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("start_game", ({ roomCode }) => {
-    //ALL OF THE LOGIC RELATED TO GETTING SONGS, INITIALIZING GAME STATE
-    io.to(roomCode).emit("game_started", {});
-  }
+  socket.on("request_start_game", () => {
+    const player = players[socket.sessionID];
+    const roomCode = player.roomCode;
+    const room = rooms[roomCode];
+  
+    if (!room) {
+      socket.emit("error", { message: "Room not found" });
+      return;
+    }
 
+    if (room.host_player.sessionID !== socket.sessionID) {
+      socket.emit("error", { message: "Only host can start" });
+      return;
+    }
 
+    room.startGame();
+  });
+
+  socket.on("submit_guess", ({ trackID }) => {
+    const player = players[socket.sessionID];
+    const roomCode = player.roomCode;
+    const room = rooms[roomCode];
+    room.submitPlayerGuess(player, trackID, socket);
+  });
+
+  socket.on("ready_status", () => {
+    console.log("Attempting to mark player as ready")
+    const player = players[socket.sessionID];
+    const roomCode = player.roomCode;
+    const room = rooms[roomCode];
+    room.setPlayerReady(player);
+  })
 });
 
 server.listen(3001, () => {
