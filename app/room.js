@@ -196,6 +196,10 @@ class Room {
 
   async startResultsSequence() {
     // THIRD AND FINAL SEQUENCE OF A ROUND
+    // clean up active curses
+    for (let i = 0; i < this.players.length; i++) {
+      this.players[i].activeCurses = [];
+    }
     console.log("starting results sequence")
     const currentSongCondensed = { trackID: this.currentSong.trackID, name: this.currentSong.name, artist: this.currentSong.artist, cover: this.currentSong.cover };
     this.io.to(this.roomCode).emit("results_started", { song : currentSongCondensed, players: this.getPlayersCondensed() });
